@@ -1,0 +1,30 @@
+name: Update Data
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install requests
+        run: pip install requests
+      - name: Run sync
+        env:
+          TS_CHANNEL_ID: ${{ secrets.TS_CHANNEL_ID }}
+          TS_API_KEY: ${{ secrets.TS_API_KEY }}
+        run: python sync.py
+      - name: Commit and Push
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add data_log.csv
+          git commit -m "Update logs" || exit 0
+          git push
