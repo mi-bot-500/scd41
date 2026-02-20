@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Вытягиваем всю историю, чтобы Git знал о последних изменениях
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,6 +26,12 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
+      - name: Ensure file is up to date
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main # Принудительно обновляем файлы перед запуском скрипта
+
       - name: Run sync
         env:
           TS_CHANNEL_ID: ${{ secrets.TS_CHANNEL_ID }}
@@ -34,10 +40,11 @@ jobs:
 
       - name: Commit and Push
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data_log.csv
-          # Подтягиваем изменения, если они были в репозитории
-          git pull origin main --rebase
-          # Коммитим только при наличии изменений
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update data_log.csv" && git push origin main)
+          # Проверяем, есть ли изменения, прежде чем коммитить
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update data_log.csv"
+            git push origin main
+          fi
