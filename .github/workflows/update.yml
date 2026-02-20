@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Вытягиваем всю историю, чтобы Git знал о последних изменениях
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,11 +26,22 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Ensure file is up to date
+      - name: Sync with remote
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main # Принудительно обновляем файлы перед запуском скрипта
+          git pull origin main
+
+      - name: Check file before sync
+        run: |
+          echo "--- ИНФОРМАЦИЯ О ФАЙЛЕ ПЕРЕД ЗАПУСКОМ ---"
+          if [ -f data_log.csv ]; then
+            ls -lh data_log.csv # Покажет размер (должно быть ~2.6M)
+            tail -n 10 data_log.csv # Покажет последние 3 строки (проверим дату)
+          else
+            echo "Файл data_log.csv НЕ НАЙДЕН в репозитории!"
+          fi
+          echo "----------------------------------------"
 
       - name: Run sync
         env:
@@ -41,7 +52,6 @@ jobs:
       - name: Commit and Push
         run: |
           git add data_log.csv
-          # Проверяем, есть ли изменения, прежде чем коммитить
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
