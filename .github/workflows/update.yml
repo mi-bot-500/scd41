@@ -2,29 +2,40 @@ name: Update Data
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # Изменил на 15 мин, так стабильнее для GitHub
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # Обновил до v4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # Обновил до v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Включает встроенное кэширование
 
       - name: Install dependencies
         run: pip install requests
+
+      - name: Check file before sync
+        run: |
+          echo "--- ИНФОРМАЦИЯ О ФАЙЛЕ ПЕРЕД ЗАПУСКОМ ---"
+          if [ -f data_log.csv ]; then
+            ls -lh data_log.csv
+            tail -n 10 data_log.csv
+          else
+            echo "Файл data_log.csv НЕ НАЙДЕН!"
+          fi
+          echo "----------------------------------------"
 
       - name: Run sync
         env:
@@ -40,6 +51,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update data_log.csv [skip ci]" # [skip ci] чтобы не зацикливать
+            git commit -m "Update data_log.csv"
             git push origin main
           fi
