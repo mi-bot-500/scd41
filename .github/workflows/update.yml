@@ -1,4 +1,5 @@
 name: Update Data
+
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -7,27 +8,36 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # Scarica tutta la cronologia per evitare conflitti
-      - name: Setup Python
+          fetch-depth: 0
+
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      - name: Install requests
+
+      - name: Install dependencies
         run: pip install requests
+
       - name: Run sync
         env:
           TS_CHANNEL_ID: ${{ secrets.TS_CHANNEL_ID }}
           TS_API_KEY: ${{ secrets.TS_API_KEY }}
         run: python sync.py
+
       - name: Commit and Push
         run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git pull origin main # Prende i cambiamenti manuali prima di spingere i nuovi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data_log.csv
-          git commit -m "Update logs" || exit 0
-          git push origin main
+          # Подтягиваем изменения, если они были в репозитории
+          git pull origin main --rebase
+          # Коммитим только при наличии изменений
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update data_log.csv" && git push origin main)
