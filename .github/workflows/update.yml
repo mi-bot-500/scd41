@@ -2,46 +2,29 @@ name: Update Data
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/30 * * * *' # Изменил на 15 мин, так стабильнее для GitHub
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Обновил до v4
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # Обновил до v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
+          cache: 'pip' # Включает встроенное кэширование
 
       - name: Install dependencies
         run: pip install requests
-
-      - name: Sync with remote
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main
-
-      - name: Check file before sync
-        run: |
-          echo "--- ИНФОРМАЦИЯ О ФАЙЛЕ ПЕРЕД ЗАПУСКОМ ---"
-          if [ -f data_log.csv ]; then
-            ls -lh data_log.csv # Покажет размер (должно быть ~2.6M)
-            tail -n 10 data_log.csv # Покажет последние 3 строки (проверим дату)
-          else
-            echo "Файл data_log.csv НЕ НАЙДЕН в репозитории!"
-          fi
-          echo "----------------------------------------"
 
       - name: Run sync
         env:
@@ -51,10 +34,12 @@ jobs:
 
       - name: Commit and Push
         run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data_log.csv
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update data_log.csv"
+            git commit -m "Update data_log.csv [skip ci]" # [skip ci] чтобы не зацикливать
             git push origin main
           fi
