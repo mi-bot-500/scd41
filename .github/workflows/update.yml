@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Scarica tutta la cronologia per evitare conflitti
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -25,6 +27,7 @@ jobs:
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
+          git pull origin main # Prende i cambiamenti manuali prima di spingere i nuovi
           git add data_log.csv
           git commit -m "Update logs" || exit 0
-          git push
+          git push origin main
