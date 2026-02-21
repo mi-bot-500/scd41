@@ -1,9 +1,11 @@
 name: Update Data
 
 on:
-  schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+#   schedule:
+#    - cron: '0 * * * *' # Оставляем для подстраховки раз в час
+  workflow_dispatch:     # Кнопка в интерфейсе
+  repository_dispatch:   # Внешний вызов через API
+    types: [trigger_sync]
 
 jobs:
   build:
