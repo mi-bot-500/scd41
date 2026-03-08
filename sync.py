@@ -21,8 +21,19 @@ CSV_HEADERS = [
     "pressure",
     "voc_index",
     "nox_index",
+    "relay_on",
+    "relay_state_age_s",
 ]
 LEGACY_HEADERS = ["timestamp", "co2", "temp", "hum"]
+PREVIOUS_HEADERS = [
+    "timestamp",
+    "co2",
+    "temp",
+    "hum",
+    "pressure",
+    "voc_index",
+    "nox_index",
+]
 
 
 def inspect_csv_state() -> str:
@@ -36,7 +47,7 @@ def inspect_csv_state() -> str:
         return "empty"
 
     header = rows[0]
-    if header == LEGACY_HEADERS:
+    if header == LEGACY_HEADERS or header == PREVIOUS_HEADERS:
         return "legacy"
 
     if header != CSV_HEADERS:
@@ -112,6 +123,8 @@ def write_csv(feeds: list[dict]) -> None:
                     feed.get("field4"),
                     feed.get("field5"),
                     feed.get("field6"),
+                    feed.get("field7"),
+                    feed.get("field8"),
                 ]
             )
 
@@ -278,6 +291,8 @@ def sync_incremental() -> None:
                     feed.get("field4"),
                     feed.get("field5"),
                     feed.get("field6"),
+                    feed.get("field7"),
+                    feed.get("field8"),
                 ]
             )
             latest_entry_id = feed.get("entry_id")
@@ -318,7 +333,7 @@ def sync() -> None:
 
     if state in {"missing", "empty", "header_only", "legacy"}:
         if state == "legacy":
-            print("DEBUG: Legacy CSV detected. Rebuilding full history with 6 fields.")
+            print("DEBUG: Legacy CSV detected. Rebuilding full history with 8 fields.")
         else:
             print(f"DEBUG: CSV state is {state}. Starting full sync.")
         sync_full_history()
