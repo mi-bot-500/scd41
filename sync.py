@@ -1,7 +1,7 @@
 import csv
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -10,6 +10,7 @@ TS_API_KEY = os.getenv("TS_API_KEY")
 CSV_FILE = os.getenv("CSV_FILE", "data_log.csv")
 BATCH_SIZE = 8000
 REQUEST_TIMEOUT = 30
+TS_OVERLAP_SECONDS = int(os.getenv("TS_OVERLAP_SECONDS", "300"))
 FULL_RESYNC = os.getenv("FULL_RESYNC", "").lower() in {"1", "true", "yes"}
 
 CSV_HEADERS = [
@@ -68,6 +69,16 @@ def inspect_csv_state() -> str:
             return "current"
 
     return "header_only"
+
+
+def normalize_cell(value: object) -> str:
+    return "" if value is None else str(value)
+
+
+def row_signature(row: list[str]) -> tuple[str, ...]:
+    return tuple(normalize_cell(value) for value in row)
+
+
 def get_last_timestamp() -> str:
     last_ts = "2000-01-01T00:00:00Z"
 
@@ -84,6 +95,36 @@ def get_last_timestamp() -> str:
                     last_ts = raw_ts if raw_ts.endswith("Z") else raw_ts + "Z"
 
     return last_ts
+
+
+def parse_timestamp(value: str) -> datetime:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+
+
+def format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load_recent_signatures(start_timestamp: str) -> set[tuple[str, ...]]:
+    signatures: set[tuple[str, ...]] = set()
+
+    if not os.path.exists(CSV_FILE) or os.stat(CSV_FILE).st_size == 0:
+        return signatures
+
+    with open(CSV_FILE, "r", newline="") as csv_file:
+        reader = csv.reader(csv_file)
+        next(reader, None)
+        for row in reader:
+            if not row or not row[0]:
+                continue
+            raw_ts = row[0].strip()
+            timestamp = raw_ts if raw_ts.endswith("Z") else raw_ts + "Z"
+            if timestamp < start_timestamp:
+                continue
+            signatures.add(row_signature(row))
+
+    return signatures
 
 
 def fetch_batch(end_timestamp: str) -> tuple[dict, list[dict]]:
@@ -268,14 +309,21 @@ def sync_full_history() -> None:
 
 
 def sync_incremental() -> None:
-    cursor_ts = get_last_timestamp()
+    last_timestamp = get_last_timestamp()
+    overlap_start = format_timestamp(
+        parse_timestamp(last_timestamp) - timedelta(seconds=TS_OVERLAP_SECONDS)
+    )
+    seen_signatures = load_recent_signatures(overlap_start)
     total_added = 0
 
-    print(f"DEBUG: Last timestamp found: {cursor_ts}")
+    print(
+        f"DEBUG: Last timestamp found: {last_timestamp}, "
+        f"overlap_start={overlap_start}"
+    )
 
     while True:
         try:
-            channel_info, feeds = fetch_since(cursor_ts)
+            channel_info, feeds = fetch_since(overlap_start)
         except Exception as exc:
             print(f"DEBUG ERROR: {exc}")
             return
@@ -289,23 +337,26 @@ def sync_incremental() -> None:
 
         for feed in feeds:
             current_ts = feed["created_at"]
-            if current_ts <= cursor_ts:
+            if current_ts < overlap_start:
                 continue
 
-            new_rows.append(
-                [
-                    current_ts,
-                    feed.get("field1"),
-                    feed.get("field2"),
-                    feed.get("field3"),
-                    feed.get("field4"),
-                    feed.get("field5"),
-                    feed.get("field6"),
-                    feed.get("field7"),
-                    feed.get("field8"),
-                ]
-            )
-            latest_entry_id = feed.get("entry_id")
+            row = [
+                current_ts,
+                normalize_cell(feed.get("field1")),
+                normalize_cell(feed.get("field2")),
+                normalize_cell(feed.get("field3")),
+                normalize_cell(feed.get("field4")),
+                normalize_cell(feed.get("field5")),
+                normalize_cell(feed.get("field6")),
+                normalize_cell(feed.get("field7")),
+                normalize_cell(feed.get("field8")),
+            ]
+            signature = row_signature(row)
+            if signature in seen_signatures:
+                continue
+
+            seen_signatures.add(signature)
+            new_rows.append(row)
 
         if not new_rows:
             print("DEBUG: No new rows after duplicate filtering.")
@@ -313,12 +364,14 @@ def sync_incremental() -> None:
 
         append_rows(new_rows)
         total_added += len(new_rows)
-        cursor_ts = new_rows[-1][0]
+        overlap_start = new_rows[-1][0]
+        seen_signatures = {row_signature(row) for row in new_rows if row[0] == overlap_start}
 
         remote_last_entry_id = channel_info.get("last_entry_id")
         print(
             f"DEBUG: Added {len(new_rows)} rows, total {total_added}, "
-            f"cursor={cursor_ts}, remote_last_entry_id={remote_last_entry_id}"
+            f"cursor={overlap_start}, "
+            f"remote_last_entry_id={remote_last_entry_id}"
         )
 
         if len(feeds) < BATCH_SIZE:

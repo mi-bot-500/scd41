@@ -3,6 +3,7 @@ import io
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 
 INFLUX_URL = os.getenv(
@@ -11,6 +12,7 @@ INFLUX_URL = os.getenv(
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
 INFLUX_ORG = os.getenv("INFLUX_ORG", "ESP32")
 INFLUX_MEASUREMENT = os.getenv("INFLUX_MEASUREMENT", "internet_probe_raw")
+INFLUX_OVERLAP_HOURS = int(os.getenv("INFLUX_OVERLAP_HOURS", "48"))
 INFLUX_FULL_RESYNC = os.getenv("INFLUX_FULL_RESYNC", "").lower() in {
     "1",
     "true",
@@ -58,6 +60,15 @@ def row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
         row.get("icmp_target", ""),
         row.get("service_host", ""),
     )
+
+
+def parse_timestamp(value: str) -> datetime:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+
+
+def format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def inspect_csv_state(path: str) -> str:
@@ -198,6 +209,22 @@ def load_last_timestamp_and_keys(
     return last_timestamp, seen_keys
 
 
+def load_recent_keys(
+    path: str, start_timestamp: str
+) -> set[tuple[str, str, str, str, str]]:
+    seen_keys: set[tuple[str, str, str, str, str]] = set()
+
+    with open(path, "r", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            timestamp = row.get("timestamp")
+            if not timestamp or timestamp < start_timestamp:
+                continue
+            seen_keys.add(row_key(row))
+
+    return seen_keys
+
+
 def ensure_header(path: str) -> None:
     if os.path.exists(path):
         return
@@ -223,7 +250,11 @@ def sync_bucket(bucket: str, output_path: str) -> None:
         print(f"Recovered empty archive with {len(rows)} rows from {bucket} to {output_path}")
         return
 
-    fetched_rows = fetch_rows(bucket, last_timestamp)
+    overlap_start = format_timestamp(
+        parse_timestamp(last_timestamp) - timedelta(hours=INFLUX_OVERLAP_HOURS)
+    )
+    seen_keys = load_recent_keys(output_path, overlap_start)
+    fetched_rows = fetch_rows(bucket, overlap_start)
     new_rows: list[dict[str, str]] = []
 
     for row in fetched_rows:
@@ -234,12 +265,18 @@ def sync_bucket(bucket: str, output_path: str) -> None:
         new_rows.append(row)
 
     if not new_rows:
-        print(f"No new rows for {bucket}; {output_path} preserved as-is.")
+        print(
+            f"No new rows for {bucket}; {output_path} preserved as-is. "
+            f"Overlap start={overlap_start}"
+        )
         return
 
     ensure_header(output_path)
     append_rows(output_path, new_rows)
-    print(f"Appended {len(new_rows)} rows from {bucket} to {output_path}")
+    print(
+        f"Appended {len(new_rows)} rows from {bucket} to {output_path} "
+        f"(overlap start={overlap_start})"
+    )
 
 
 def sync() -> None:
