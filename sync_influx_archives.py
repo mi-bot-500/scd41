@@ -8,10 +8,7 @@ import urllib.request
 INFLUX_URL = os.getenv(
     "INFLUX_URL", "https://eu-central-1-1.aws.cloud2.influxdata.com"
 )
-INFLUX_TOKEN = os.getenv(
-    "INFLUX_TOKEN",
-    "Va_FU36MMLAutc3bbm0iNKLkTDlBBW7iKiuxiwDoSA3ksm5Fei1mDz4FU9yN7nrOfbgBai3wS9CoDImrStD75Q==",
-)
+INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
 INFLUX_ORG = os.getenv("INFLUX_ORG", "ESP32")
 INFLUX_MEASUREMENT = os.getenv("INFLUX_MEASUREMENT", "internet_probe_raw")
 INFLUX_FULL_RESYNC = os.getenv("INFLUX_FULL_RESYNC", "").lower() in {
@@ -45,6 +42,12 @@ CSV_HEADERS = [
     "probe_success",
     "tcp_connect_ms",
 ]
+
+
+def require_env(name: str, value: str | None) -> str:
+    if value:
+        return value
+    raise RuntimeError(f"Missing required environment variable: {name}")
 
 
 def row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
@@ -95,7 +98,7 @@ def run_query(bucket: str, start_timestamp: str | None) -> str:
         f"{INFLUX_URL}/api/v2/query?org={INFLUX_ORG}",
         data=build_query(bucket, start_timestamp).encode("utf-8"),
         headers={
-            "Authorization": f"Token {INFLUX_TOKEN}",
+            "Authorization": f"Token {require_env('INFLUX_TOKEN', INFLUX_TOKEN)}",
             "Accept": "application/csv",
             "Content-Type": "application/vnd.flux",
         },

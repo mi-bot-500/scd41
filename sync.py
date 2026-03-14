@@ -5,10 +5,9 @@ from datetime import datetime, timezone
 
 import requests
 
-TS_CHANNEL_ID = os.getenv("TS_CHANNEL_ID", "3256740")
-TS_API_KEY = os.getenv("TS_API_KEY", "5AUV1CMWTQFP29DV")
+TS_CHANNEL_ID = os.getenv("TS_CHANNEL_ID")
+TS_API_KEY = os.getenv("TS_API_KEY")
 CSV_FILE = os.getenv("CSV_FILE", "data_log.csv")
-API_URL = f"https://api.thingspeak.com/channels/{TS_CHANNEL_ID}/feeds.json"
 BATCH_SIZE = 8000
 REQUEST_TIMEOUT = 30
 FULL_RESYNC = os.getenv("FULL_RESYNC", "").lower() in {"1", "true", "yes"}
@@ -34,6 +33,17 @@ PREVIOUS_HEADERS = [
     "voc_index",
     "nox_index",
 ]
+
+
+def require_env(name: str, value: str | None) -> str:
+    if value:
+        return value
+    raise RuntimeError(f"Missing required environment variable: {name}")
+
+
+def get_api_url() -> str:
+    channel_id = require_env("TS_CHANNEL_ID", TS_CHANNEL_ID)
+    return f"https://api.thingspeak.com/channels/{channel_id}/feeds.json"
 
 
 def inspect_csv_state() -> str:
@@ -78,11 +88,11 @@ def get_last_timestamp() -> str:
 
 def fetch_batch(end_timestamp: str) -> tuple[dict, list[dict]]:
     params = {
-        "api_key": TS_API_KEY,
+        "api_key": require_env("TS_API_KEY", TS_API_KEY),
         "end": end_timestamp.removesuffix("Z"),
         "results": BATCH_SIZE,
     }
-    response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
+    response = requests.get(get_api_url(), params=params, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     payload = response.json()
     return payload.get("channel", {}), payload.get("feeds", [])
@@ -90,11 +100,11 @@ def fetch_batch(end_timestamp: str) -> tuple[dict, list[dict]]:
 
 def fetch_since(start_timestamp: str) -> tuple[dict, list[dict]]:
     params = {
-        "api_key": TS_API_KEY,
+        "api_key": require_env("TS_API_KEY", TS_API_KEY),
         "start": start_timestamp.removesuffix("Z"),
         "results": BATCH_SIZE,
     }
-    response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
+    response = requests.get(get_api_url(), params=params, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     payload = response.json()
     return payload.get("channel", {}), payload.get("feeds", [])
