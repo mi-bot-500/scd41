@@ -45,14 +45,17 @@ jobs:
           TS_API_KEY: ${{ secrets.TS_API_KEY }}
         run: python sync.py
 
+      - name: Sync Influx archives
+        run: python sync_influx_archives.py
+
       - name: Commit and Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data_log.csv
+          git add data_log.csv internet_quality.csv internet_quality_mac.csv
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update data_log.csv"
+            git commit -m "Update archived sensor data"
             git push origin main
           fi
