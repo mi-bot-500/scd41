@@ -5,7 +5,6 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-
 INFLUX_URL = os.getenv(
     "INFLUX_URL", "https://eu-central-1-1.aws.cloud2.influxdata.com"
 )
@@ -78,16 +77,21 @@ def inspect_csv_state(path: str) -> str:
     if os.stat(path).st_size == 0:
         return "empty"
 
-    with open(path, "r", newline="") as csv_file:
-        reader = csv.reader(csv_file)
-        header = next(reader, None)
-        if header is None:
-            return "empty"
-        if header != CSV_HEADERS:
-            raise ValueError(f"Unexpected CSV header in {path}: {header}")
-        for row in reader:
-            if row and row[0]:
-                return "current"
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
+            reader = csv.reader(csv_file)
+            header = next(reader, None)
+            if header is None:
+                return "empty"
+            if header != CSV_HEADERS:
+                print(f"WARNING: Unexpected CSV header in {path}: {header}. Triggering rebuild.")
+                return "empty"
+            for row in reader:
+                if row and row[0]:
+                    return "current"
+    except Exception as exc:
+        print(f"WARNING: Error reading CSV state for {path}: {exc}. Triggering rebuild.")
+        return "empty"
 
     return "header_only"
 
@@ -172,7 +176,7 @@ def fetch_rows(bucket: str, start_timestamp: str | None) -> list[dict[str, str]]
 
 
 def write_full_csv(path: str, rows: list[dict[str, str]]) -> None:
-    with open(path, "w", newline="") as csv_file:
+    with open(path, "w", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_HEADERS)
         writer.writeheader()
         writer.writerows(rows)
@@ -182,8 +186,12 @@ def append_rows(path: str, rows: list[dict[str, str]]) -> None:
     if not rows:
         return
 
-    with open(path, "a", newline="") as csv_file:
+    file_exists = os.path.exists(path) and os.stat(path).st_size > 0
+
+    with open(path, "a", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_HEADERS)
+        if not file_exists:
+            writer.writeheader()
         writer.writerows(rows)
 
 
@@ -193,7 +201,7 @@ def load_last_timestamp_and_keys(
     last_timestamp: str | None = None
     seen_keys: set[tuple[str, str, str, str, str]] = set()
 
-    with open(path, "r", newline="") as csv_file:
+    with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
             timestamp = row.get("timestamp")
@@ -214,7 +222,7 @@ def load_recent_keys(
 ) -> set[tuple[str, str, str, str, str]]:
     seen_keys: set[tuple[str, str, str, str, str]] = set()
 
-    with open(path, "r", newline="") as csv_file:
+    with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
             timestamp = row.get("timestamp")
@@ -226,10 +234,11 @@ def load_recent_keys(
 
 
 def ensure_header(path: str) -> None:
-    if os.path.exists(path):
+    state = inspect_csv_state(path)
+    if state not in {"missing", "empty"}:
         return
 
-    with open(path, "w", newline="") as csv_file:
+    with open(path, "w", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_HEADERS)
         writer.writeheader()
 
