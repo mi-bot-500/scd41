@@ -182,14 +182,14 @@ def write_csv(feeds: list[dict]) -> None:
             writer.writerow(
                 [
                     feed["created_at"],
-                    feed.get("field1"),
-                    feed.get("field2"),
-                    feed.get("field3"),
-                    feed.get("field4"),
-                    feed.get("field5"),
-                    feed.get("field6"),
-                    feed.get("field7"),
-                    feed.get("field8"),
+                    normalize_cell(feed.get("field1")),
+                    normalize_cell(feed.get("field2")),
+                    normalize_cell(feed.get("field3")),
+                    normalize_cell(feed.get("field4")),
+                    normalize_cell(feed.get("field5")),
+                    normalize_cell(feed.get("field6")),
+                    normalize_cell(feed.get("field7")),
+                    normalize_cell(feed.get("field8")),
                 ]
             )
 
@@ -199,7 +199,9 @@ def validate_entry_ids(feeds: list[dict]) -> list[tuple[int, int]]:
     previous_id = None
 
     for feed in feeds:
-        current_id = feed["entry_id"]
+        current_id = feed.get("entry_id")
+        if current_id is None:
+            continue
         if previous_id is not None and current_id != previous_id + 1:
             gaps.append((previous_id + 1, current_id - 1))
         previous_id = current_id
@@ -211,6 +213,9 @@ def catch_up_recent_entries(
     all_feeds: list[dict], seen_entry_ids: set[int]
 ) -> dict:
     channel_info: dict = {}
+
+    if not all_feeds:
+        return channel_info
 
     for attempt in range(3):
         latest_timestamp = all_feeds[-1]["created_at"]
@@ -232,14 +237,18 @@ def catch_up_recent_entries(
             new_in_batch += 1
 
         remote_last_entry_id = channel_info.get("last_entry_id")
-        current_last_entry_id = all_feeds[-1]["entry_id"]
+        current_last_entry_id = all_feeds[-1].get("entry_id")
         print(
             f"DEBUG: Catch-up pass {attempt + 1}: added {new_in_batch} rows, "
             f"local_last_entry_id={current_last_entry_id}, "
             f"remote_last_entry_id={remote_last_entry_id}"
         )
 
-        if remote_last_entry_id is None or current_last_entry_id >= remote_last_entry_id:
+        if (
+            remote_last_entry_id is None
+            or current_last_entry_id is None
+            or current_last_entry_id >= remote_last_entry_id
+        ):
             break
 
         time.sleep(1)
@@ -260,10 +269,10 @@ def sync_full_history() -> None:
             channel_info, feeds = fetch_batch(current_end)
         except Exception as exc:
             print(f"DEBUG ERROR: failed to fetch batch ending at {current_end}: {exc}")
-            return
+            break
 
         if not feeds:
-            print("DEBUG: No more feeds returned. Reached the beginning of the channel.")
+            print("DEBUG: No more feeds returned from ThingSpeak API.")
             break
 
         new_in_batch = 0
@@ -295,12 +304,12 @@ def sync_full_history() -> None:
         time.sleep(0.5)
 
     if not all_feeds:
-        print("DEBUG: No data downloaded from ThingSpeak.")
+        print("DEBUG: No data downloaded from ThingSpeak. Verify TS_CHANNEL_ID and TS_API_KEY.")
         return
 
-    all_feeds.sort(key=lambda feed: feed["entry_id"])
+    all_feeds.sort(key=lambda feed: feed.get("entry_id", 0))
     latest_channel_info = catch_up_recent_entries(all_feeds, seen_entry_ids)
-    all_feeds.sort(key=lambda feed: feed["entry_id"])
+    all_feeds.sort(key=lambda feed: feed.get("entry_id", 0))
     write_csv(all_feeds)
 
     gaps = validate_entry_ids(all_feeds)
@@ -309,7 +318,7 @@ def sync_full_history() -> None:
     )
 
     print(f"DEBUG: Full sync wrote {len(all_feeds)} rows to {CSV_FILE}")
-    if last_entry_id is not None and all_feeds[-1]["entry_id"] != last_entry_id:
+    if last_entry_id is not None and all_feeds[-1].get("entry_id") != last_entry_id:
         print(
             "WARNING: latest exported entry_id does not match channel last_entry_id. "
             "The export may be incomplete."
