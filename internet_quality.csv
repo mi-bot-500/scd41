@@ -1,1 +1,1 @@
-
+﻿timestamp,device,dns_target,icmp_target,service_host,dns_ms,error_code,icmp_jitter_ms,icmp_loss_pct,icmp_rtt_ms,probe_success,tcp_connect_ms
