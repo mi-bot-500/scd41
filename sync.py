@@ -51,7 +51,11 @@ def inspect_csv_state() -> str:
     if not os.path.exists(CSV_FILE):
         return "missing"
 
-    with open(CSV_FILE, "r", newline="") as csv_file:
+    if os.stat(CSV_FILE).st_size == 0:
+        return "empty"
+
+    # Используем utf-8-sig, чтобы проигнорировать \ufeff (BOM)
+    with open(CSV_FILE, "r", encoding="utf-8-sig", newline="") as csv_file:
         rows = list(csv.reader(csv_file))
 
     if not rows:
@@ -85,7 +89,7 @@ def get_last_timestamp() -> str:
     if not os.path.exists(CSV_FILE) or os.stat(CSV_FILE).st_size == 0:
         return last_ts
 
-    with open(CSV_FILE, "r", newline="") as csv_file:
+    with open(CSV_FILE, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.reader(csv_file)
         next(reader, None)
         for row in reader:
@@ -112,7 +116,7 @@ def load_recent_signatures(start_timestamp: str) -> set[tuple[str, ...]]:
     if not os.path.exists(CSV_FILE) or os.stat(CSV_FILE).st_size == 0:
         return signatures
 
-    with open(CSV_FILE, "r", newline="") as csv_file:
+    with open(CSV_FILE, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.reader(csv_file)
         next(reader, None)
         for row in reader:
@@ -155,12 +159,18 @@ def append_rows(rows: list[list[str]]) -> None:
     if not rows:
         return
 
-    with open(CSV_FILE, "a", newline="") as csv_file:
-        csv.writer(csv_file).writerows(rows)
+    # Если файл не существует или пуст — сначала записываем заголовок
+    file_exists = os.path.exists(CSV_FILE) and os.stat(CSV_FILE).st_size > 0
+
+    with open(CSV_FILE, "a", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        if not file_exists:
+            writer.writerow(CSV_HEADERS)
+        writer.writerows(rows)
 
 
 def write_csv(feeds: list[dict]) -> None:
-    with open(CSV_FILE, "w", newline="") as csv_file:
+    with open(CSV_FILE, "w", encoding="utf-8", newline="") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(CSV_HEADERS)
 
